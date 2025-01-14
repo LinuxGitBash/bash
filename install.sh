@@ -1,5 +1,28 @@
 #!/bin/bash
 
+# Проверяем и устанавливаем зависимости
+if ! command -v notify-send &> /dev/null; then
+    echo "Установка libnotify-bin..."
+    if command -v apt &> /dev/null; then
+        sudo apt install -y libnotify-bin
+    elif command -v dnf &> /dev/null; then
+        sudo dnf install -y libnotify
+    elif command -v pacman &> /dev/null; then
+        sudo pacman -S --noconfirm libnotify
+    fi
+fi
+
+if ! command -v xdotool &> /dev/null; then
+    echo "Установка xdotool..."
+    if command -v apt &> /dev/null; then
+        sudo apt install -y xdotool
+    elif command -v dnf &> /dev/null; then
+        sudo dnf install -y xdotool
+    elif command -v pacman &> /dev/null; then
+        sudo pacman -S --noconfirm xdotool
+    fi
+fi
+
 # Проверяем наличие zenity
 if ! command -v zenity &> /dev/null; then
     echo "Установка zenity..."

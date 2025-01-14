@@ -1,24 +1,16 @@
 #!/bin/bash
 
-# Проверяем наличие DISPLAY
-if [ -z "$DISPLAY" ]; then
-    export DISPLAY=:0
-fi
+# Настройка переменных окружения
+export DISPLAY=:0
+export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
 
-# Проверяем наличие DBUS_SESSION_BUS_ADDRESS
-if [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; then
-    export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
-fi
-
-# Настраиваем переключение раскладки на Alt+Shift
+# Настраиваем раскладку
 setxkbmap -layout us,ru -option grp:alt_shift_toggle
 
-# Показываем уведомление
-if command -v notify-send &> /dev/null; then
-    notify-send "Раскладка клавиатуры" "Настроено переключение Alt+Shift\nUS ⟷ RU" -i keyboard
+# Запускаем индикатор без терминала
+if command -v gxkb &> /dev/null; then
+    nohup gxkb >/dev/null 2>&1 &
 fi
 
-# Запускаем индикатор раскладки только если есть X11
-if [ -n "$DISPLAY" ] && command -v gxkb &> /dev/null; then
-    gxkb &
-fi 
+# Уведомление
+notify-send "Раскладка клавиатуры" "✓ Переключение Alt+Shift активировано\nUS ⟷ RU" -i keyboard 

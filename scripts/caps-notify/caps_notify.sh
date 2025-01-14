@@ -1,39 +1,35 @@
 #!/bin/bash
 
-# Проверяем наличие xset
-if ! command -v xset &> /dev/null; then
-    echo "Ошибка: требуется xset"
-    exit 1
-fi
+# Настройка переменных окружения
+export DISPLAY=:0
+export DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u)/bus"
 
-# Функция для отображения уведомления
+# Функция для уведомлений
 show_notification() {
-    local state="$1"
-    local icon="$2"
-    
-    if command -v notify-send &> /dev/null; then
-        sudo -u $SUDO_USER DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u $SUDO_USER)/bus notify-send "Caps Lock" "$state" -i "$icon" -t 1000
-    fi
+    notify-send "Caps Lock" "$1" -i keyboard -t 1000
 }
 
-# Функция для проверки состояния Caps Lock
+# Проверка состояния
 check_caps_state() {
     xset q | grep "Caps Lock" | awk '{print $4}'
 }
 
-# Бесконечный цикл проверки состояния
-previous_state=""
-while true; do
-    current_state=$(check_caps_state)
-    
-    if [ "$current_state" != "$previous_state" ]; then
-        if [ "$current_state" = "on" ]; then
-            show_notification "ВКЛЮЧЕН" "capslock-on"
-        else
-            show_notification "выключен" "capslock-off"
+# Запуск в фоне
+(
+    previous_state=""
+    while true; do
+        current_state=$(check_caps_state)
+        if [ "$current_state" != "$previous_state" ]; then
+            if [ "$current_state" = "on" ]; then
+                show_notification "ВКЛЮЧЕН"
+            else
+                show_notification "выключен"
+            fi
+            previous_state="$current_state"
         fi
-        previous_state="$current_state"
-    fi
-    
-    sleep 0.5
-done 
+        sleep 1
+    done
+) >/dev/null 2>&1 &
+
+# Уведомление о запуске
+notify-send "Caps Lock Notify" "✓ Сервис активирован" -i keyboard 

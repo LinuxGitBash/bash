@@ -2,15 +2,7 @@
 
 # Проверяем наличие xset
 if ! command -v xset &> /dev/null; then
-    if command -v zenity &> /dev/null; then
-        zenity --error \
-            --title="Ошибка" \
-            --text="Требуется установить xset.\nУстановите командой:\nsudo apt install x11-xserver-utils" \
-            --width=300
-    else
-        echo "Ошибка: требуется установить xset"
-        echo "Установите командой: sudo apt install x11-xserver-utils"
-    fi
+    echo "Ошибка: требуется xset"
     exit 1
 fi
 
@@ -19,12 +11,8 @@ show_notification() {
     local state="$1"
     local icon="$2"
     
-    if command -v notify-send &> /dev/null && notify-send --version &> /dev/null; then
-        notify-send "Caps Lock" "$state" -i "$icon" -t 1000
-    elif command -v zenity &> /dev/null; then
-        zenity --notification --text="Caps Lock: $state"
-    else
-        echo "Caps Lock: $state"
+    if command -v notify-send &> /dev/null; then
+        sudo -u $SUDO_USER DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u $SUDO_USER)/bus notify-send "Caps Lock" "$state" -i "$icon" -t 1000
     fi
 }
 

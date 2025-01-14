@@ -1,39 +1,44 @@
 #!/bin/bash
 
+# Проверяем root права
+if [ "$EUID" -ne 0 ]; then
+    echo "Требуются права root"
+    exit 1
+fi
+
+# Проверяем путь установки
+if [ -z "$1" ]; then
+    echo "Ошибка: не указан путь установки"
+    exit 1
+fi
+
 INSTALL_DIR="$1"
+SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
 
-# Проверяем и устанавливаем зависимости
-if ! command -v notify-send &> /dev/null; then
-    echo "Установка libnotify-bin..."
-    if command -v apt &> /dev/null; then
-        sudo apt install -y libnotify-bin
-    elif command -v dnf &> /dev/null; then
-        sudo dnf install -y libnotify
-    elif command -v pacman &> /dev/null; then
-        sudo pacman -S --noconfirm libnotify
-    fi
+# Устанавливаем зависимости
+echo "Установка зависимостей..."
+if command -v apt &> /dev/null; then
+    apt install -y libnotify-bin x11-xserver-utils
+elif command -v dnf &> /dev/null; then
+    dnf install -y libnotify xorg-x11-server-utils
+elif command -v pacman &> /dev/null; then
+    pacman -S --noconfirm libnotify xorg-xset
 fi
 
-if ! command -v xset &> /dev/null; then
-    echo "Установка x11-xserver-utils..."
-    if command -v apt &> /dev/null; then
-        sudo apt install -y x11-xserver-utils
-    elif command -v dnf &> /dev/null; then
-        sudo dnf install -y xorg-x11-server-utils
-    elif command -v pacman &> /dev/null; then
-        sudo pacman -S --noconfirm xorg-xset
-    fi
-fi
+# Создаем директорию установки
+mkdir -p "$INSTALL_DIR"
 
-# Копируем скрипт
-cp caps_notify.sh "$INSTALL_DIR/"
-cp stop.sh "$INSTALL_DIR/caps_notify_stop.sh"
+# Копируем скрипты
+echo "Копирование скриптов..."
+cp "$SCRIPT_DIR/caps_notify.sh" "$INSTALL_DIR/"
+cp "$SCRIPT_DIR/stop.sh" "$INSTALL_DIR/caps_notify_stop.sh"
 chmod +x "$INSTALL_DIR/caps_notify.sh"
 chmod +x "$INSTALL_DIR/caps_notify_stop.sh"
 
-# Создаем systemd сервис для пользователя
-mkdir -p "$HOME/.config/systemd/user"
-cat > "$HOME/.config/systemd/user/caps-notify.service" << EOL
+# Создаем systemd сервис
+echo "Настройка systemd сервиса..."
+SYSTEMD_DIR="/etc/systemd/system"
+cat > "$SYSTEMD_DIR/caps-notify.service" << EOL
 [Unit]
 Description=Caps Lock Notification Service
 After=graphical-session.target
@@ -43,17 +48,19 @@ Type=simple
 ExecStart=$INSTALL_DIR/caps_notify.sh
 Restart=always
 RestartSec=1
+User=$SUDO_USER
 
 [Install]
-WantedBy=default.target
+WantedBy=multi-user.target
 EOL
 
-# Перезагружаем systemd и включаем сервис
-systemctl --user daemon-reload
-systemctl --user enable caps-notify.service
-systemctl --user start caps-notify.service
+# Настраиваем systemd
+systemctl daemon-reload
+systemctl enable caps-notify.service
+systemctl start caps-notify.service
 
-# Настраиваем PATH
-if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
-    echo 'export PATH="$PATH:'"$INSTALL_DIR"'"' >> "$HOME/.bashrc"
-fi 
+# Добавляем в PATH для всех пользователей
+echo "PATH=\$PATH:$INSTALL_DIR" > /etc/profile.d/caps-notify.sh
+chmod +x /etc/profile.d/caps-notify.sh
+
+echo "Установка caps-notify завершена успешно" 

@@ -31,21 +31,27 @@ cp stop.sh "$INSTALL_DIR/caps_notify_stop.sh"
 chmod +x "$INSTALL_DIR/caps_notify.sh"
 chmod +x "$INSTALL_DIR/caps_notify_stop.sh"
 
-# Создаем автозапуск
-mkdir -p "$HOME/.config/autostart"
-cat > "$HOME/.config/autostart/caps-notify.desktop" << EOL
-[Desktop Entry]
-Type=Application
-Name=Caps Lock Notification
-Comment=Shows notification when Caps Lock state changes
-Exec=$INSTALL_DIR/caps_notify.sh
-Hidden=false
-NoDisplay=false
-X-GNOME-Autostart-enabled=true
+# Создаем systemd сервис для пользователя
+mkdir -p "$HOME/.config/systemd/user"
+cat > "$HOME/.config/systemd/user/caps-notify.service" << EOL
+[Unit]
+Description=Caps Lock Notification Service
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=$INSTALL_DIR/caps_notify.sh
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=default.target
 EOL
 
-# Запускаем скрипт
-nohup "$INSTALL_DIR/caps_notify.sh" >/dev/null 2>&1 &
+# Перезагружаем systemd и включаем сервис
+systemctl --user daemon-reload
+systemctl --user enable caps-notify.service
+systemctl --user start caps-notify.service
 
 # Настраиваем PATH
 if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then

@@ -1,28 +1,5 @@
 #!/bin/bash
 
-# Проверяем и устанавливаем зависимости
-if ! command -v notify-send &> /dev/null; then
-    echo "Установка libnotify-bin..."
-    if command -v apt &> /dev/null; then
-        sudo apt install -y libnotify-bin
-    elif command -v dnf &> /dev/null; then
-        sudo dnf install -y libnotify
-    elif command -v pacman &> /dev/null; then
-        sudo pacman -S --noconfirm libnotify
-    fi
-fi
-
-if ! command -v xdotool &> /dev/null; then
-    echo "Установка xdotool..."
-    if command -v apt &> /dev/null; then
-        sudo apt install -y xdotool
-    elif command -v dnf &> /dev/null; then
-        sudo dnf install -y xdotool
-    elif command -v pacman &> /dev/null; then
-        sudo pacman -S --noconfirm xdotool
-    fi
-fi
-
 # Проверяем наличие zenity
 if ! command -v zenity &> /dev/null; then
     echo "Установка zenity..."
@@ -43,32 +20,50 @@ GREEN='\033[0;32m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-# Функция для отображения прогресса
-show_progress() {
-    echo "$1" | zenity --progress --pulsate --title="Установка скриптов" --text="$1" --auto-close --width=300
-}
-
-# Приветственное окно
-zenity --info \
-    --title="Установщик Bash Scripts" \
-    --text="Добро пожаловать в установщик Bash Scripts Collection!" \
-    --width=300
-
 # URL репозитория по умолчанию
 DEFAULT_REPO="https://github.com/LinuxGitBash/bash"
 
-# Спрашиваем, хочет ли пользователь использовать другой репозиторий
-if zenity --question \
-    --title="Выбор репозитория" \
-    --text="Использовать репозиторий по умолчанию ($DEFAULT_REPO)?" \
-    --width=300; then
-    REPO_URL="$DEFAULT_REPO"
-else
-    REPO_URL=$(zenity --entry \
-        --title="Установка" \
-        --text="Введите URL GitHub репозитория:" \
-        --entry-text="$DEFAULT_REPO" \
-        --width=300) || exit 1
+# Клонируем репозиторий во временную директорию
+TEMP_DIR=$(mktemp -d)
+if ! git clone "$DEFAULT_REPO" "$TEMP_DIR" 2>/dev/null; then
+    zenity --error \
+        --title="Ошибка" \
+        --text="Не удалось загрузить репозиторий. Проверьте подключение к интернету." \
+        --width=300
+    rm -rf "$TEMP_DIR"
+    exit 1
+fi
+
+# Создаем список доступных скриптов
+SCRIPTS_LIST=""
+for script_dir in "$TEMP_DIR"/scripts/*/; do
+    if [ -d "$script_dir" ] && [ -f "$script_dir/install.sh" ]; then
+        script_name=$(basename "$script_dir")
+        description=$(head -n 1 "$script_dir/README.md" 2>/dev/null || echo "$script_name")
+        SCRIPTS_LIST="$SCRIPTS_LIST FALSE \"$script_name\" \"$description\""
+    fi
+done
+
+# Показываем диалог выбора скриптов
+SELECTED_SCRIPTS=$(eval zenity --list \
+    --title="Выбор скриптов для установки" \
+    --text="Выберите скрипты для установки:" \
+    --checklist \
+    --column="Выбор" \
+    --column="Скрипт" \
+    --column="Описание" \
+    --height=400 \
+    --width=600 \
+    $SCRIPTS_LIST) || exit 1
+
+# Если ничего не выбрано - выходим
+if [ -z "$SELECTED_SCRIPTS" ]; then
+    zenity --error \
+        --title="Ошибка" \
+        --text="Не выбрано ни одного скрипта." \
+        --width=300
+    rm -rf "$TEMP_DIR"
+    exit 1
 fi
 
 # Выбираем директорию установки
@@ -77,43 +72,30 @@ INSTALL_DIR=$(zenity --file-selection \
     --directory \
     --filename="$HOME/.local/bin") || exit 1
 
-# Клонируем репозиторий во временную директорию
-TEMP_DIR=$(mktemp -d)
-if ! git clone "$REPO_URL" "$TEMP_DIR" 2>&1 | show_progress "Загрузка репозитория..."; then
-    zenity --error \
-        --title="Ошибка" \
-        --text="Не удалось загрузить репозиторий. Проверьте URL и подключение к интернету." \
-        --width=300
-    rm -rf "$TEMP_DIR"
-    exit 1
-fi
-
-# Создаем директорию для установки если она не существует
-mkdir -p "$INSTALL_DIR"
-
-# Копируем скрипты
+# Устанавливаем выбранные скрипты
 (
-echo "10"; echo "# Подготовка к установке..."
-sleep 1
+echo "0"; echo "# Подготовка к установке..."
 
-echo "30"; echo "# Копирование скриптов..."
-if [ -d "$TEMP_DIR/scripts" ]; then
-    find "$TEMP_DIR/scripts" -type f -name "*.sh" -exec cp {} "$INSTALL_DIR/" \;
-else
-    # Если директории scripts нет, копируем все .sh файлы из корня
-    cp "$TEMP_DIR"/*.sh "$INSTALL_DIR/" 2>/dev/null
-fi
+# Преобразуем строку с выбранными скриптами в массив
+IFS='|' read -ra SCRIPT_ARRAY <<< "$SELECTED_SCRIPTS"
+total_scripts=${#SCRIPT_ARRAY[@]}
+current_script=0
 
-echo "50"; echo "# Установка прав доступа..."
-chmod +x "$INSTALL_DIR"/*.sh 2>/dev/null
-
-echo "70"; echo "# Настройка PATH..."
-if [[ ":$PATH:" != *":$INSTALL_DIR:"* ]]; then
-    echo 'export PATH="$PATH:'"$INSTALL_DIR"'"' >> "$HOME/.bashrc"
-fi
-
-echo "90"; echo "# Очистка временных файлов..."
-rm -rf "$TEMP_DIR"
+for script in "${SCRIPT_ARRAY[@]}"; do
+    current_script=$((current_script + 1))
+    progress=$((current_script * 100 / total_scripts))
+    
+    # Убираем возможные пробелы
+    script=$(echo "$script" | tr -d ' ')
+    
+    echo "$progress"
+    echo "# Установка $script..."
+    
+    if [ -f "$TEMP_DIR/scripts/$script/install.sh" ]; then
+        cd "$TEMP_DIR/scripts/$script"
+        bash install.sh "$INSTALL_DIR"
+    fi
+done
 
 echo "100"; echo "# Установка завершена!"
 ) | zenity --progress \
@@ -123,14 +105,10 @@ echo "100"; echo "# Установка завершена!"
     --auto-close \
     --width=300
 
-if [ $? = 0 ]; then
-    zenity --info \
-        --title="Успех" \
-        --text="Установка успешно завершена!\n\nПожалуйста, перезапустите терминал или выполните:\nsource ~/.bashrc" \
-        --width=300
-else
-    zenity --error \
-        --title="Ошибка" \
-        --text="Произошла ошибка при установке." \
-        --width=300
-fi
+# Очистка
+rm -rf "$TEMP_DIR"
+
+zenity --info \
+    --title="Успех" \
+    --text="Установка успешно завершена!\n\nПожалуйста, перезапустите терминал или выполните:\nsource ~/.bashrc" \
+    --width=300

@@ -2,6 +2,7 @@
 
 INSTALL_DIR="$1"
 SCRIPT_DIR="$(dirname "$(readlink -f "$0")")"
+CURRENT_USER=$SUDO_USER
 
 # Установка зависимостей
 if command -v apt &> /dev/null; then
@@ -16,24 +17,20 @@ fi
 cp "$SCRIPT_DIR/caps_notify.sh" "$INSTALL_DIR/"
 chmod +x "$INSTALL_DIR/caps_notify.sh"
 
-# Создание systemd сервиса
-cat > /etc/systemd/system/caps-notify.service << EOL
-[Unit]
-Description=Caps Lock Notification Service
-After=graphical-session.target
-
-[Service]
-Type=simple
-ExecStart=$INSTALL_DIR/caps_notify.sh
-Restart=always
-RestartSec=1
-User=$SUDO_USER
-
-[Install]
-WantedBy=multi-user.target
+# Создаем автозапуск для текущего пользователя
+mkdir -p /home/$CURRENT_USER/.config/autostart
+cat > /home/$CURRENT_USER/.config/autostart/caps-notify.desktop << EOL
+[Desktop Entry]
+Type=Application
+Name=Caps Lock Notification
+Comment=Shows notification when Caps Lock state changes
+Exec=$INSTALL_DIR/caps_notify.sh
+Hidden=false
+X-GNOME-Autostart-enabled=true
 EOL
 
-# Активация сервиса
-systemctl daemon-reload
-systemctl enable caps-notify.service
-systemctl start caps-notify.service 
+# Устанавливаем правильные права
+chown -R $CURRENT_USER:$CURRENT_USER /home/$CURRENT_USER/.config/autostart
+
+# Запускаем сервис для текущего пользователя
+sudo -u $CURRENT_USER DISPLAY=:0 DBUS_SESSION_BUS_ADDRESS="unix:path=/run/user/$(id -u $CURRENT_USER)/bus" $INSTALL_DIR/caps_notify.sh 
